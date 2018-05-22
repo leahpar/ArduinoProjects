@@ -1,0 +1,39 @@
+{
+  "controls": {
+    "tele-switch": "ABCDE123",
+    "videoproj-on": "ABCDE123",
+    "videoproj-off": "ABCDE123",
+    "volet-1-up": "ABCDE123",
+    "volet-1-down": "ABCDE123",
+    "volet-1-stop": "ABCDE123",
+    "volet-2-up": "ABCDE123",
+    "volet-2-down": "ABCDE123",
+    "volet-2-stop": "ABCDE123"
+  },
+  "actions": {
+    "cinema-on": [
+      "videoproj-on",
+      "jedi-off",
+    ],
+    "cinema-off": [
+      "videoproj-off",
+      "tempo-1",
+      "videoproj-off",
+      "jedi-on",
+    ],
+    "volets-down": [
+      "volet-1-down",
+      "volet-2-down",
+      "tempo-25",
+      "volet-1-stop",
+      "volet-2-stop"
+    ],
+    "volets-up": [
+      "volet-1-up",
+      "volet-2-up",
+      "tempo-25",
+      "volet-1-stop",
+      "volet-2-stop"
+    ],
+  }
+}
