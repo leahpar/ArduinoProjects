@@ -20,7 +20,6 @@ const char* mqtt_topic_status = "status/videoproj";
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-
 // --- RS232 -------------------------------------------------------------------
 
 #include <SoftwareSerial.h>
@@ -28,17 +27,21 @@ PubSubClient client(wifiClient);
 #define txPin D6
 SoftwareSerial rs232 =  SoftwareSerial(rxPin, txPin);
 
-// --- DIVERS ------------------------------------------------------------------
+// --- TIMERS ------------------------------------------------------------------
 
-int delayCommand   = 2000;
+int delayCommand   = 3000;
 int delayToggle    = 20000;
-int timeoutCommand = 10000;
+int timeoutCommand = 15000;
+int delayCheckStatus = 60000;
 
 unsigned long chrono;
-unsigned long chronoTimeout = 0;
-unsigned long chronoToggle  = 0;
-int lampHours = 0;
+unsigned long chronoTimeout;
+unsigned long chronoToggle;
+unsigned long chronoCheckStatus;
 
+// --- DIVERS ------------------------------------------------------------------
+
+int lampHours = 0;
 
 // --- MACHINE STATE -----------------------------------------------------------
 
@@ -46,6 +49,7 @@ enum MachineStates {START, CONNECT_WIFI, CONNECT_MQTT,  UNKNOWN,
                     COMMAND_ON, PROJECTOR_ON, COMMAND_OFF, PROJECTOR_OFF,
                     LAMP_HOURS};
 MachineStates machineState = START;
+MachineStates machineStateNext = UNKNOWN;
 
 enum MQTTCommands {MQTT_NONE, MQTT_ON, MQTT_OFF, MQTT_TOGGLE, MQTT_STATE, MQTT_HOURS};
 MQTTCommands mqttCommand = MQTT_NONE;
@@ -61,53 +65,64 @@ ProjectorCommands projectorCommand = PROJO_NONE;
 void videoMachine() {
   switch (machineState) {
 
-    case START:
+    case START: // Init variables and goto CONNECT_WIFI
+      chrono = millis();
+      chronoTimeout = millis();
+      chronoToggle = millis();
+      chronoCheckStatus = millis();
       setMachineState(CONNECT_WIFI, __LINE__);
       break;
 
-    case CONNECT_WIFI:
+    case CONNECT_WIFI: // connect wifi and goto CONNECT_MQTT
       if (connectWifi()) {
         setMachineState(CONNECT_MQTT, __LINE__);
       }
       break;
 
-    case CONNECT_MQTT:
+    case CONNECT_MQTT: // connect mqtt and goto UNKNOWN
       if (connectMqtt()) {
         setMachineState(UNKNOWN, __LINE__);
       }
       break;
 
-    case UNKNOWN:
-      chrono = 0;
-      chronoToggle = millis();
+    case UNKNOWN: // Check videoproj status
+      chronoCheckStatus = millis(); // update last check
       if (readProjectorStatus()) {
         setMachineState(PROJECTOR_ON, __LINE__);
       }
       else {
         setMachineState(PROJECTOR_OFF, __LINE__);
       }
+      sendProjectorStatus();
       break;
 
-    case LAMP_HOURS:
+    case LAMP_HOURS: // Send lamp hours and goto next state
+      readLampHours();
       sendLampHours();
-      setMachineState(UNKNOWN, __LINE__);
+      setMachineState(machineStateNext, __LINE__);
       break;
 
-    case PROJECTOR_ON:
+    case PROJECTOR_ON: // Check if mqtt command to shut down
       switch (mqttCommand) {
         case MQTT_OFF:
         case MQTT_TOGGLE:
-          setMachineState(COMMAND_OFF, __LINE__);
+          machineStateNext = COMMAND_OFF;
+          setMachineState(LAMP_HOURS, __LINE__);
           chrono = 0;
           chronoTimeout = millis();
           break;
         case MQTT_ON:
           mqttCommand = MQTT_NONE;
           break;
+        default: // Sometimes, check for status
+          if (millis() - chronoCheckStatus > delayCheckStatus) {
+            setMachineState(UNKNOWN, __LINE__);
+          }
+          break;
       }
       break;
 
-    case PROJECTOR_OFF:
+    case PROJECTOR_OFF: // Check if mqtt command to turn on
       switch (mqttCommand) {
         case MQTT_ON:
         case MQTT_TOGGLE:
@@ -118,28 +133,33 @@ void videoMachine() {
         case MQTT_OFF:
           mqttCommand = MQTT_NONE;
           break;
+        default: // Sometimes, check for status
+          if (millis() - chronoCheckStatus > delayCheckStatus) {
+            setMachineState(UNKNOWN, __LINE__);
+          }
+          break;
       }
       break;
 
     case COMMAND_ON:
       mqttCommand = MQTT_NONE;
       if (millis() - chrono > delayCommand) {
-          chrono = millis();
-          if (readProjectorStatus()) {
-            readLampHours();
-            sendProjectorStatus();
-            projectorCommand = PROJO_NONE;
-            setMachineState(LAMP_HOURS, __LINE__);
-          }
-          else {
-            projectorCommand = PROJO_ON;
-            callProjectorCommand();
-          }
-        }
-      else if (millis() - chronoTimeout > timeoutCommand) {
+        chrono = millis();
+        if (readProjectorStatus()) {
+          sendProjectorStatus();
           projectorCommand = PROJO_NONE;
-          setMachineState(UNKNOWN, __LINE__);
+          machineStateNext = PROJECTOR_ON;
+          setMachineState(LAMP_HOURS, __LINE__);
         }
+        else {
+          projectorCommand = PROJO_ON;
+          callProjectorCommand();
+        }
+      }
+      else if (millis() - chronoTimeout > timeoutCommand) {
+        projectorCommand = PROJO_NONE;
+        setMachineState(UNKNOWN, __LINE__);
+      }
       break;
 
     case COMMAND_OFF:
@@ -149,10 +169,9 @@ void videoMachine() {
         if (!readProjectorStatus()) {
           sendProjectorStatus();
           projectorCommand = PROJO_NONE;
-          setMachineState(LAMP_HOURS, __LINE__);
+          setMachineState(PROJECTOR_OFF, __LINE__);
         }
         else {
-          readLampHours();
           projectorCommand = PROJO_OFF;
           callProjectorCommand();
         }
@@ -172,8 +191,8 @@ void setMachineState(MachineStates state, int line) {
   Serial.println(
       String("[")
     + String((int)(millis()/1000))
-    + "ms;l." + String(line) + ") "
-    + "]"
+    + "s;l." + String(line)
+    + "] "
     + getMachineStateString(machineState)
     + " => "
     + getMachineStateString(state)
@@ -209,22 +228,16 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   blink(30, 0);
 
   if (action == "on") {
-    if (millis() - chronoToggle > delayToggle) {
-      mqttCommand = MQTT_ON;
-      chronoToggle = millis();
-    }
+    mqttCommand = MQTT_ON;
+    chronoToggle = millis();
   }
   else if (action == "off") {
-    if (millis() - chronoToggle > delayToggle) {
-      mqttCommand = MQTT_OFF;
-      chronoToggle = millis();
-    }
+    mqttCommand = MQTT_OFF;
+    chronoToggle = millis();
   }
   else if (action == "toggle") {
-    if (millis() - chronoToggle > delayToggle) {
-      mqttCommand = MQTT_TOGGLE;
-      chronoToggle = millis();
-    }
+    mqttCommand = MQTT_TOGGLE;
+    chronoToggle = millis();
   }
 }
 
@@ -232,6 +245,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 // READ STATE FROM PROJECTOR
 //==============================================================================
 bool readProjectorStatus() {
+  Serial.println("readProjectorStatus()");
   projectorCommand = PROJO_STATE;
   int state = callProjectorCommand();
   projectorCommand = PROJO_NONE;
@@ -252,6 +266,7 @@ void sendProjectorStatus() {
 // READ LAMP HOURS FROM PROJECTOR
 //==============================================================================
 void readLampHours() {
+  Serial.println("readLampHours()");
   projectorCommand = PROJO_HOURS;
   lampHours = callProjectorCommand();
   projectorCommand = PROJO_NONE;
@@ -274,28 +289,30 @@ int callProjectorCommand() {
   switch (projectorCommand) {
     case PROJO_ON:
       response = command("* 0 IR 001\r");
+      if (response.substring(0, 4) == "*001")
+        return -1; // TODO: error
       break;
     case PROJO_OFF:
       response = command("* 0 IR 002\r");
+      if (response.substring(0, 4) == "*001")
+        return -1; // TODO: error
       break;
     case PROJO_STATE:
-      // DEBUG
-      if (machineState == COMMAND_ON) return 1;
-      if (machineState == COMMAND_OFF)  return 0;
-      // END DEBUG
       response = command("* 0 Lamp ?\r");
-      if (response.indexOf("Lamp 1") >= 0)
+      if (response.substring(0, 4) == "*001")
+        return -1; // TODO: error
+      else if (response.indexOf("Lamp 1") >= 0)
         return 1;
       else
         return 0;
       break;
     case PROJO_HOURS:
-      // DEBUG
-      return 2000;
-      // END DEBUG
       response = command("* 0 Lamp\r");
       String response = command("* 0 Lamp\r");
-      return response.substring(response.indexOf(' ')+1).toInt(); // 0 if error
+      if (response.substring(0, 4) == "*001")
+        return -1; // TODO: error
+      else
+        return response.substring(response.indexOf(' ')+1).toInt(); // 0 if error
       break;
   }
   return 0;
@@ -307,7 +324,6 @@ int callProjectorCommand() {
 String command(char* c) {
   String res = "";
   char inByte;
-  Serial.println(String("=> ") + c);
 
   // empty rs232 data
   while (rs232.available()) rs232.read();
@@ -322,9 +338,12 @@ String command(char* c) {
   while (rs232.available()) {
     inByte = rs232.read();
     if (inByte == '\r') inByte = ' ';
-    //Serial.write(inByte);
     res = res + inByte;
   }
+
+  delay(200);
+
+  Serial.println(String("Command: ") + c + String(" => ") + res);
 
   return res;
 }
@@ -333,6 +352,7 @@ String command(char* c) {
 // CONNECT WIFI
 //==============================================================================
 bool connectWifi() {
+  Serial.println("connectWifi()");
   WiFi.begin(wifi_ssid, wifi_pass);
   int i = 0;
   while (WiFi.status() != WL_CONNECTED) {
@@ -345,6 +365,7 @@ bool connectWifi() {
 // CONNECT MQTT
 //==============================================================================
 bool connectMqtt() {
+  Serial.println("connectMqtt()");
   int i = 0;
   while (!client.connect(mqtt_client_id, mqtt_user, mqtt_pwd)) {
     blink(20, 50 + 5*i++);
@@ -427,5 +448,5 @@ void loop() {
     setMachineState(CONNECT_MQTT, __LINE__);
   }
 
-  delay(50);
+  delay(100);
 }
