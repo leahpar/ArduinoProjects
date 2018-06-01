@@ -20,8 +20,9 @@ PubSubClient client(wifiClient);
 
 // --- DIVERS ---------------------------------------------
 
-const int PIN_RELAY = 0; // GPIO 0
-const int PIN_LED   = 2; // GPIO 2
+const int PIN_RELAY = D2;
+const int PIN_LED   = D3;
+// Note: D4 = esp8266 led.
 
 unsigned long t_current;
 unsigned long t_previous;
@@ -35,24 +36,25 @@ void setup() {
   Serial.begin(74880);
   while (!Serial);
   Serial.println("Start");
-  
+
   pinMode(BUILTIN_LED, OUTPUT);
-  
+  digitalWrite(BUILTIN_LED, LOW); // Default : OFF
+
   pinMode(PIN_RELAY, OUTPUT);     // to relay
-  digitalWrite(PIN_RELAY, LOW);  // Default : OFF
-  
+  digitalWrite(PIN_RELAY, LOW);   // Default : OFF
+
   pinMode(PIN_LED, OUTPUT);       // to led power
   digitalWrite(PIN_LED, LOW);     // Default : off
 
 
   // --- WIFI ---------------------------------------------
-  
+
   WiFi.mode(WIFI_STA); // mode standard
   WiFi.begin(wifi_ssid, wifi_pass);
   reconnect_wifi();
 
   // --- MQTT ---------------------------------------------
-  
+
   client.setServer(mqtt_host, mqtt_port);
   client.setCallback(mqtt_callback);
   reconnect_mqtt();
@@ -95,7 +97,7 @@ void reconnect_mqtt(){
     }
     digitalWrite(BUILTIN_LED, HIGH);
     Serial.println();
-    
+
     Serial.println("Subscribe to channels...");
     client.subscribe(mqtt_topic);
 
@@ -131,14 +133,14 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 
   Serial.println("[" + String(topic) + "] " + message);
   blink(30, 0);
-  
+
   if (action == "off") {
     Serial.println("Hifi OFF");
     digitalWrite(PIN_RELAY, LOW);
     delay(10);
     digitalWrite(PIN_LED, LOW);
   }
-  
+
   else if (action == "on") {
     Serial.println("Hifi ON");
     digitalWrite(PIN_RELAY, HIGH);
@@ -173,5 +175,3 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   digitalWrite(BUILTIN_LED, HIGH);
   delay(down);
 }
-
-
