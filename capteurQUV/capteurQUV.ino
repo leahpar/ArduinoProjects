@@ -27,6 +27,11 @@ const unsigned long MEASURE_TIMEOUT = 25000UL; // 25ms = ~8m
 DHT dht(D5, DHTTYPE);
 float humidity;
 float temperature;
+unsigned long chrono;
+
+// --- Mosfet -----------------------------------------------------------------
+
+const byte POWER_PIN = D2;
 
 
 //==============================================================================
@@ -56,7 +61,7 @@ void setup() {
 
   // Distance
   
-  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(TRIGGER_PIN, INPUT); // INPUT pour couper le courant
   digitalWrite(TRIGGER_PIN, LOW);
   pinMode(ECHO_PIN, INPUT);
 
@@ -64,6 +69,11 @@ void setup() {
   
   dht.begin();
 
+  // Power
+  
+  pinMode(POWER_PIN, OUTPUT);
+  digitalWrite(POWER_PIN, LOW);
+  
   // HTTP server
   
   server.on("/", handleRoot);
@@ -84,24 +94,31 @@ void loop(void){
 //==============================================================================
 void handleRoot() {
   digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(POWER_PIN, HIGH);
+  
   String response = "";
 
-  if (server.hasArg("temperature") || server.hasArg("humidity")) {
-    measure_temperature();
-  }
-  
   if (server.hasArg("echo")) {
+    pinMode(TRIGGER_PIN, OUTPUT); // OUTPUT pour envoyer le signal
+    delay(10);
     response += "echo=" + String(measure_distance());
     int echos = server.arg("echo").toInt()-1;
     for (int i=0; i<echos; i++) {
       digitalWrite(LED_BUILTIN, HIGH);
       response += ";" + String(measure_distance());
+      delay(50);
       digitalWrite(LED_BUILTIN, LOW);
-      delay(100);
+      delay(50);
     }
     response += "\n";
+    pinMode(TRIGGER_PIN, INPUT); // INPUT pour couper le courant
+  
   }
 
+  if (server.hasArg("temperature") || server.hasArg("humidity")) {
+    measure_temperature();
+  }
+  
   if (server.hasArg("temperature")) {
     response += "temperature=" + String(temperature) + "\n";
   }
@@ -116,6 +133,7 @@ void handleRoot() {
 
   server.send(200, "text/plain", response);
   digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(POWER_PIN, LOW);
 }
 
 
@@ -134,8 +152,14 @@ long measure_distance() {
 // Measure : temperature & humidity
 //==============================================================================
 void measure_temperature() {
-  humidity = dht.readHumidity();
-  temperature = dht.readTemperature();
+  chrono = millis(); // for timeout
+
+  do {
+    delay(500);
+    humidity = dht.readHumidity();
+    temperature = dht.readTemperature();
+    Serial.println(String(humidity) + " " + String(temperature));
+  } while (isnan(humidity) && isnan(temperature) && millis() - chrono < 7000);
 }
 
 
