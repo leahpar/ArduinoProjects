@@ -25,15 +25,23 @@ PubSubClient client(wifiClient);
 
 // --- Pulse -----------------------------------------------------------------
 
-const int PIN_INTERRUPT = D6;
+const int PIN_INTERRUPT = D5;
 volatile unsigned long curpulse = 0;
 volatile unsigned long lastpulse = 0;
-volatile int P = 0;           // puissance instantanée en W
-volatile int Pmax = 0;           // pic de puissance en W
-unsigned long cptEDF = 0;     // total conso heures pleines en Wh
+volatile int P = 0;              // puissance instantanée en W
+//volatile int Pmax = 0;           // pic de puissance en W
+unsigned long cptEDF = 0;        // total conso en Wh
 
 // --- OLED ------------------------------------------------------------------
 
+#define WITH_OLED true
+
+// SCL <=> D1
+// SDA <=> D2
+// VCC <=> 3.3v
+// GND <=> GND
+
+#if (WITH_OLED)
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -45,14 +53,12 @@ Adafruit_SSD1306 display(OLED_RESET);
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
+#endif
 
 // --- Misc ------------------------------------------------------------------
 
 long chrono;
 const int measureDelay = 10 * 60 * 1000; // 10 min
-
-
-
 
 
 //==============================================================================
@@ -78,10 +84,11 @@ void setup() {
   //connectMqtt();
 
   // --- Oled -------------------------------------------------------------------
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  Serial.println("?");
-  display.display();
-  delay(1000);
+  #if (WITH_OLED)
+    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    display.display();
+    delay(1000);
+  #endif
 
   // --- Pulse ------------------------------------------------------------------
 
@@ -92,6 +99,11 @@ void setup() {
   lastpulse = 0;
 
   Serial.println("Setup done");
+  blink(20, 50);
+  blink(20, 50);
+  blink(20, 50);
+  blink(20, 50);
+  blink(20, 50);
 }
 
 
@@ -100,12 +112,13 @@ void setup() {
 //==============================================================================
 void pulseInterrupt() {
   curpulse = millis();
-  if (curpulse - lastpulse > 400) {
+  if (curpulse - lastpulse > 400) { // max 9kWh
     P = 3600000 / (curpulse - lastpulse);
-    if (P > Pmax) Pmax = P;
+    //if (P > Pmax) Pmax = P;
     cptEDF++;
     Serial.println("Pulse");
     lastpulse = curpulse;
+    //blink(30, 0);
   }
 }
 
@@ -117,7 +130,8 @@ void loop() {
     // Send data
     connectWifi();
     connectMqtt();
-    //client.publish(mqtt_topic_data, String(cptEDF).c_str());
+    client.publish(mqtt_topic_data, String(cptEDF).c_str());
+    cptEDF = 0;
     chrono = millis();
   }
 
@@ -130,14 +144,16 @@ void loop() {
 // OLED display
 //==============================================================================
 void oled_display() {
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  display.println(strpad(String(P), 6) + " W");
-  display.println(strpad(String(Pmax), 6) + " Wm");
-  display.println(strpad(String(cptEDF/1000.0), 6) + " kWh");
-  display.display();
+  #if (WITH_OLED)
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 0);
+    display.println(strpad(String(P), 6) + " W");
+    //display.println(strpad(String(Pmax), 6) + " Wm");
+    display.println(strpad(String(cptEDF/1000.0), 6) + " kWh");
+    display.display();
+  #endif
 }
 String strpad(String str, int l) {
   while (str.length() < l) str = String(" ") + str;
