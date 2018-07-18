@@ -1,3 +1,11 @@
+/*
+ * Watchdog doc
+ * https://tushev.org/articles/arduino/5/arduino-and-watchdog-timer
+ *
+ * Other doc (with reset values explainations)
+ * https://www.sigmdel.ca/michel/program/esp8266/arduino/watchdogs_en.html
+ */
+
 #include <constants.h>
 
 // --- WIFI --------------------------------------------------------------------
@@ -34,7 +42,7 @@ unsigned long cptEDF = 0;        // total conso en Wh
 
 // --- OLED ------------------------------------------------------------------
 
-#define WITH_OLED true
+#define WITH_OLED false
 
 // SCL <=> D1
 // SDA <=> D2
@@ -52,8 +60,8 @@ Adafruit_SSD1306 display(OLED_RESET);
 
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
-#endif
-#endif
+#endif // SSD1306_LCDHEIGHT
+#endif // WITH_OLED
 
 // --- Misc ------------------------------------------------------------------
 
@@ -116,9 +124,9 @@ void pulseInterrupt() {
     P = 3600000 / (curpulse - lastpulse);
     //if (P > Pmax) Pmax = P;
     cptEDF++;
-    Serial.println("Pulse");
+    //Serial.println("Pulse");
     lastpulse = curpulse;
-    //blink(30, 0);
+    blink(10, 1);
   }
 }
 
@@ -136,7 +144,7 @@ void loop() {
   }
 
   oled_display();
-  Serial.print(".");
+  //Serial.print(".");
   delay(500);
 }
 
@@ -164,11 +172,12 @@ String strpad(String str, int l) {
 // CONNECT WIFI
 //==============================================================================
 bool connectWifi() {
-  Serial.println("connectWifi()");
+  //Serial.println("connectWifi()");
   WiFi.begin(wifi_ssid, wifi_pass);
-  int i = 0;
+  //int i = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    blink(20, 50 + 5*i++);
+    //blink(20, 50 + 5*i++);
+    blink(50, 500);
   }
   return true;
 }
@@ -177,10 +186,11 @@ bool connectWifi() {
 // CONNECT MQTT
 //==============================================================================
 bool connectMqtt() {
-  Serial.println("connectMqtt()");
-  int i = 0;
+  //Serial.println("connectMqtt()");
+  //int i = 0;
   while (!client.connect(mqtt_client_id, mqtt_user, mqtt_pwd)) {
-    blink(20, 50 + 5*i++);
+    //blink(20, 50 + 5*i++);
+    blink(50, 2000);
   }
   return true;
 }
@@ -194,4 +204,3 @@ void blink(int up, int down) {
   digitalWrite(BUILTIN_LED, HIGH);
   delay(down);
 }
-
