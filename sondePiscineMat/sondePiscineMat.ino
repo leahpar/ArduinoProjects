@@ -1,16 +1,28 @@
-#include <constants.h>
 
 // --- WIFI ---------------------------------------------
 
 #include <ESP8266WiFi.h>
-const char* wifi_ssid = "TATOOINE"; //WIFI_SSID;
-const char* wifi_pass = WIFI_PASSWD;
-const char* host = "raphael.bacco.fr";
 
+/* RAF
+#include <constants.h>
+const char* wifi_ssid = WIFI_SSID;
+const char* wifi_pass = WIFI_PASSWD;
 IPAddress wifi_ipaddr(10, 0, 0, 210);
 IPAddress wifi_gateway(10, 0, 0, 1);
 IPAddress wifi_dns(10, 0, 0, 1);
 IPAddress wifi_subnet(255, 255, 255, 0);
+*/
+
+/* MAT */
+const char* wifi_ssid = "thewifi";
+const char* wifi_pass = "***********";
+IPAddress wifi_ipaddr(192, 168, 1, 99);
+IPAddress wifi_gateway(192, 168, 1, 1);
+IPAddress wifi_dns(192, 168, 1, 1);
+IPAddress wifi_subnet(255, 255, 255, 0);
+
+
+const char* host = "raphael.bacco.fr";
 
 
 // --- SONDE ---------------------------------------------
