@@ -42,6 +42,7 @@ void setup() {
   // HTTP server
 
   server.on("/", handleRoot);
+  server.onNotFound(handleHelp);
   server.begin();
   Serial.println("HTTP server started");
 
@@ -61,15 +62,28 @@ void loop(void) {
 }
 
 //==============================================================================
+// HANDLE HELP
+// Affiche l'usage
+//==============================================================================
+void handleHelp() {
+  String help;
+  help  = "Usage:\n";
+  help += "htp://XX.XX.XX.XX/?d=<up|down|stop>&t=<xxx>\n";
+  help += "[d] : direction (obligatoire) => up, down, stop\n";
+  help += "[t] : temps (facultatif) => en ms\n";
+  server.send(400, "text/plain", help);
+}
+
+//==============================================================================
 // HANDLE ROOT
 // Gère les requêtes http
-// format : /?d=<up|down|stop>[&t=<xxx>]
 //==============================================================================
 void handleRoot() {
 
   // Paramètre "d" obligatoire
   if (!server.hasArg("d")) {
-    server.send(400, "text/plain", "/?d=<up|down|stop>[&t=<xxx>]");
+    handleHelp();
+    return;
   }
 
   digitalWrite(LED_BUILTIN, LOW); // LED ON
@@ -87,7 +101,7 @@ void handleRoot() {
   if (server.arg("d") == "up") {
     commandUp();
   }
-  if (server.arg("d") == "down") {
+  else if (server.arg("d") == "down") {
     commandDown();
   }
   else {

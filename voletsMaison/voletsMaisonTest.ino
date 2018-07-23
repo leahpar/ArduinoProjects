@@ -1,4 +1,11 @@
 /*
+
+https://www.hackster.io/makerrelay/esp8266-wifi-5v-1-channel-relay-delay-module-iot-smart-home-e8a437
+http://blog.nicolasc.eu/esp8266-seconde-partie-le-mode-standalone/
+https://nodemcu-build.com/index.php
+https://techtutorialsx.com/2017/06/04/esp32-esp8266-micropython-uploading-files-to-the-file-system/
+
+
 #include <ESP8266WiFi.h>
 const char* wifi_ssid = "*************";
 const char* wifi_pass = "*************";
