@@ -72,7 +72,7 @@ void handleRoot() {
     server.send(400, "text/plain", "/?d=<up|down|stop>[&t=<xxx>]");
   }
 
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, LOW); // LED ON
 
   // TImeout à MAX_TIMEOUT par défaut
   command_timeout = MAX_TIMEOUT;
@@ -97,7 +97,7 @@ void handleRoot() {
   // Réponse http 200 - OK
   server.send(200, "text/plain", "OK");
 
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, HIGH); // LED OFF
 
 }
 
