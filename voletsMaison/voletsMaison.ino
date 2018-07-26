@@ -12,8 +12,8 @@ const char* wifi_pass = WIFI_PASSWD;
 ESP8266WebServer server(80);
 
 
-const int PIN_ON_OFF = 3;
-const int PIN_UP_DOWN = 4;
+const int PIN_ON_OFF = D1;
+const int PIN_UP_DOWN = D2;
 const int DELAY_RELAY = 150;
 unsigned long command_start = 0;
 const unsigned long MAX_TIMEOUT = 30 * 1000; // 30sec
@@ -28,7 +28,10 @@ void setup() {
   while (!Serial);
 
   pinMode(PIN_ON_OFF, OUTPUT);
+  digitalWrite(PIN_ON_OFF, LOW);
+
   pinMode(PIN_UP_DOWN, OUTPUT);
+  digitalWrite(PIN_UP_DOWN, LOW);
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
