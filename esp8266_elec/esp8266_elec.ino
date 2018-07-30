@@ -66,6 +66,7 @@ Adafruit_SSD1306 display(OLED_RESET);
 // --- Misc ------------------------------------------------------------------
 
 long chrono;
+long chrono_alive;
 const int measureDelay = 10 * 60 * 1000; // 10 min
 
 
@@ -103,6 +104,7 @@ void setup() {
   pinMode(PIN_INTERRUPT, INPUT_PULLUP);
   attachInterrupt(PIN_INTERRUPT, pulseInterrupt, FALLING);
   chrono = millis();
+  chrono_alive = millis();
   curpulse = millis();
   lastpulse = 0;
 
@@ -126,7 +128,6 @@ void pulseInterrupt() {
     cptEDF++;
     //Serial.println("Pulse");
     lastpulse = curpulse;
-    blink(10, 1);
   }
 }
 
@@ -134,10 +135,17 @@ void pulseInterrupt() {
 // LOOP
 //==============================================================================
 void loop() {
-  if (millis() - chrono > measureDelay) {
-    // Send data
+
+  // Check connection every 5 sec
+  if (millis() - chrono_alive > 5000) {
     connectWifi();
     connectMqtt();
+    blink(50,0);
+    chrono_alive = millis();
+  }
+  
+  if (millis() - chrono > measureDelay) {
+    // Send data
     client.publish(mqtt_topic_data, String(cptEDF).c_str());
     cptEDF = 0;
     chrono = millis();
@@ -171,28 +179,23 @@ String strpad(String str, int l) {
 //==============================================================================
 // CONNECT WIFI
 //==============================================================================
-bool connectWifi() {
+void connectWifi() {
   //Serial.println("connectWifi()");
-  WiFi.begin(wifi_ssid, wifi_pass);
-  //int i = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    //blink(20, 50 + 5*i++);
+    // Just wait to reconnect to wifi
     blink(50, 500);
   }
-  return true;
 }
 
 //==============================================================================
 // CONNECT MQTT
 //==============================================================================
-bool connectMqtt() {
+void connectMqtt() {
   //Serial.println("connectMqtt()");
-  //int i = 0;
-  while (!client.connect(mqtt_client_id, mqtt_user, mqtt_pwd)) {
-    //blink(20, 50 + 5*i++);
+  while (!client.connected()) {
+    client.connect(mqtt_client_id, mqtt_user, mqtt_pwd);
     blink(50, 2000);
   }
-  return true;
 }
 
 //==============================================================================
