@@ -140,10 +140,10 @@ void loop() {
   if (millis() - chrono_alive > 5000) {
     connectWifi();
     connectMqtt();
-    blink(50,0);
+    blink(100,0);
     chrono_alive = millis();
   }
-  
+
   if (millis() - chrono > measureDelay) {
     // Send data
     client.publish(mqtt_topic_data, String(cptEDF).c_str());
