@@ -3,7 +3,7 @@
 
 #include <ESP8266WiFi.h>
 
-/* RAF
+/* RAF 
 #include <constants.h>
 const char* wifi_ssid = WIFI_SSID;
 const char* wifi_pass = WIFI_PASSWD;
@@ -11,18 +11,24 @@ IPAddress wifi_ipaddr(10, 0, 0, 210);
 IPAddress wifi_gateway(10, 0, 0, 1);
 IPAddress wifi_dns(10, 0, 0, 1);
 IPAddress wifi_subnet(255, 255, 255, 0);
-*/
+/**/
 
 /* MAT */
 const char* wifi_ssid = "thewifi";
-const char* wifi_pass = "***********";
+const char* wifi_pass = "*********";
 IPAddress wifi_ipaddr(192, 168, 1, 99);
 IPAddress wifi_gateway(192, 168, 1, 1);
 IPAddress wifi_dns(192, 168, 1, 1);
 IPAddress wifi_subnet(255, 255, 255, 0);
+/**/
 
+// --- HTTP ---------------------------------------------
 
+#include <ESP8266HTTPClient.h>
 const char* host = "raphael.bacco.fr";
+const int   port = 80;
+//WiFiClient client;
+HTTPClient http;
 
 
 // --- SONDE ---------------------------------------------
@@ -47,8 +53,8 @@ extern "C" {
 ADC_MODE(ADC_VCC);
 
 
-//const int DELAY = 30*60; // 30 min
-const int DELAY = 70;
+const int DELAY = 30*60; // 30 min
+//const int DELAY = 10;
 
 const int WIFI_ATTEMPTS = 50;
 int wifi_errors = 0;
@@ -164,12 +170,13 @@ void step_vdd33() {
 }
 
 void send_data() {
-  WiFiClient client;
+  /*
   if (!client.connect(host, 80)) {
     Serial.println("connection failed");
     delay(50);
     return;
   }
+  */
   
   String url = String("/piscine.php")
              + String("?t=") + String(t)
@@ -178,6 +185,7 @@ void send_data() {
   Serial.print("Requesting URL: ");
   Serial.println(url);
   
+  /*
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                "Host: " + host + "\r\n" + 
                "Connection: close\r\n\r\n");
@@ -190,6 +198,15 @@ void send_data() {
       return;
     }
   }
+  */
+  
+  http.begin(host, port, url);
+
+  int httpCode = http.GET();
+  Serial.println(httpCode);
+  
+  Serial.println("closing connection");
+  http.end();
   
   Serial.println("done");
   step++;
