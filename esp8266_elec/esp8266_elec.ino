@@ -1,8 +1,5 @@
 /*
- * Watchdog doc
- * https://tushev.org/articles/arduino/5/arduino-and-watchdog-timer
- *
- * Other doc (with reset values explainations)
+ * Watchdog doc (with reset values explainations)
  * https://www.sigmdel.ca/michel/program/esp8266/arduino/watchdogs_en.html
  */
 
@@ -31,7 +28,7 @@ const char* mqtt_topic_data = "sensor/elec/appart";
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-// --- Pulse -----------------------------------------------------------------
+// --- Pulse -------------------------------------------------------------------
 
 const int PIN_INTERRUPT = D5;
 volatile unsigned long curpulse = 0;
@@ -40,30 +37,29 @@ volatile int P = 0;              // puissance instantanée en W
 //volatile int Pmax = 0;           // pic de puissance en W
 unsigned long cptEDF = 0;        // total conso en Wh
 
-// --- OLED ------------------------------------------------------------------
+// --- OLED --------------------------------------------------------------------
 
 #define WITH_OLED false
-
 // SCL <=> D1
 // SDA <=> D2
 // VCC <=> 3.3v
 // GND <=> GND
 
 #if (WITH_OLED)
-#include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+  #include <SPI.h>
+  #include <Wire.h>
+  #include <Adafruit_GFX.h>
+  #include <Adafruit_SSD1306.h>
 
-#define OLED_RESET LED_BUILTIN
-Adafruit_SSD1306 display(OLED_RESET);
+  #define OLED_RESET LED_BUILTIN
+  Adafruit_SSD1306 display(OLED_RESET);
 
-#if (SSD1306_LCDHEIGHT != 64)
-#error("Height incorrect, please fix Adafruit_SSD1306.h!");
-#endif // SSD1306_LCDHEIGHT
+  #if (SSD1306_LCDHEIGHT != 64)
+    #error("Height incorrect, please fix Adafruit_SSD1306.h!");
+  #endif // SSD1306_LCDHEIGHT
 #endif // WITH_OLED
 
-// --- Misc ------------------------------------------------------------------
+// --- Misc --------------------------------------------------------------------
 
 long chrono;
 long chrono_alive;
@@ -85,21 +81,23 @@ void setup() {
 
   WiFi.mode(WIFI_STA); // mode standard
   WiFi.begin(wifi_ssid, wifi_pass);
-  //connectWifi();
+  connectWifi();
 
   // --- MQTT ------------------------------------------------------------------
 
   client.setServer(mqtt_host, mqtt_port);
-  //connectMqtt();
+  connectMqtt();
+  client.publish("hello/world", mqtt_client_id);
 
-  // --- Oled -------------------------------------------------------------------
+  // --- Oled ------------------------------------------------------------------
+
   #if (WITH_OLED)
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
     display.display();
-    delay(1000);
+    delay(500);
   #endif
 
-  // --- Pulse ------------------------------------------------------------------
+  // --- Pulse -----------------------------------------------------------------
 
   pinMode(PIN_INTERRUPT, INPUT_PULLUP);
   attachInterrupt(PIN_INTERRUPT, pulseInterrupt, FALLING);
@@ -140,13 +138,14 @@ void loop() {
   if (millis() - chrono_alive > 5000) {
     connectWifi();
     connectMqtt();
-    blink(100,0);
+    blink(20,80);
+    blink(20,0);
     chrono_alive = millis();
   }
 
   if (millis() - chrono > measureDelay) {
     // Send data
-    client.publish(mqtt_topic_data, String(cptEDF).c_str());
+    client.publish(mqtt_topic_data, String(cptEDF).c_str(), true);
     cptEDF = 0;
     chrono = millis();
   }
@@ -192,9 +191,19 @@ void connectWifi() {
 //==============================================================================
 void connectMqtt() {
   //Serial.println("connectMqtt()");
+  int i = 0;
   while (!client.connected()) {
+    // Try to reconnect
     client.connect(mqtt_client_id, mqtt_user, mqtt_pwd);
     blink(50, 2000);
+
+    // If not connected after 20 sec
+    // Seems to be a bug in the PubSubClient librairies
+    // which make the esp8266 fail to reconnect to the mqtt broker
+    // so we do a hard reboot of the chip
+    if (i++ >= 10) {
+      while (1); // infinite loop => trigger watchdog
+    }
   }
 }
 
