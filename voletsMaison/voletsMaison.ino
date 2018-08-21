@@ -3,14 +3,15 @@
 // --- WIFI --------------------------------------------------------------------
 
 #include <ESP8266WiFi.h>
-const char* wifi_ssid = WIFI_SSID;
-const char* wifi_pass = WIFI_PASSWD;
+#include <ESP8266WiFiMulti.h> // For multiple wifi networks
+ESP8266WiFiMulti wifiMulti;
 
-// --- Serveur HTTP ----------------------------------------------------------
+// --- Serveur HTTP ------------------------------------------------------------
 
 #include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
 
+// --- Divers ------------------------------------------------------------------
 
 const int PIN_ON_OFF = D1;
 const int PIN_UP_DOWN = D2;
@@ -19,6 +20,7 @@ unsigned long command_start = 0;
 const unsigned long MAX_TIMEOUT = 30 * 1000; // 30sec
 unsigned long command_timeout = MAX_TIMEOUT;
 bool stop = true;
+
 
 //==============================================================================
 // SETUP
@@ -38,9 +40,33 @@ void setup() {
 
   // Wifi
 
+  Serial.println("Connecting ...");
+
   WiFi.mode(WIFI_STA);
+  /*
   WiFi.begin(wifi_ssid, wifi_pass);
+  */
+  wifiMulti.addAP(MULTI_WIFI_1);
+  wifiMulti.addAP(MULTI_WIFI_2);
+
+  Serial.print("mac address : ");
   Serial.println(WiFi.macAddress());
+
+  int i = 0;
+  // Wait for the Wi-Fi to connect:
+  // scan for Wi-Fi networks, and connect to the strongest network
+  while (wifiMulti.run() != WL_CONNECTED) {
+    Serial.print('.');
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+  }
+  Serial.println();
+  Serial.print("Connected to : ");
+  Serial.println(WiFi.SSID());
+  Serial.print("IP address : ");
+  Serial.println(WiFi.localIP());
 
   // HTTP server
 
@@ -71,9 +97,17 @@ void loop(void) {
 void handleHelp() {
   String help;
   help  = "Usage:\n";
-  help += "htp://XX.XX.XX.XX/?d=<up|down|stop>&t=<xxx>\n";
-  help += "[d] : direction (obligatoire) => up, down, stop\n";
-  help += "[t] : temps (facultatif) => en ms\n";
+  help += "http://" + WiFi.localIP().toString() + "/?d=<up|down|stop>&t=<xx>\n";
+  help += " [d] : direction (obligatoire) => up, down, stop\n";
+  help += " [t] : temps (facultatif) => en ms\n";
+  help += "       defaut = " + String(MAX_TIMEOUT) + " ms\n";
+  help += "\n";
+  help += "Wifi:\n";
+  help += " SSID: "+ WiFi.SSID() +"\n";
+  help += " MAC:  "+ WiFi.macAddress() +"\n";
+  help += " IP:   "+ WiFi.localIP().toString() +"\n";
+  help += " RSSI: "+ String(WiFi.RSSI()) + " dB\n";
+
   server.send(400, "text/plain", help);
 }
 
@@ -112,7 +146,11 @@ void handleRoot() {
   }
 
   // Réponse http 200 - OK
-  server.send(200, "text/plain", "OK");
+  server.send(
+    200,
+    "text/plain",
+    "OK " + server.arg("d") + " " + command_timeout
+  );
 
   digitalWrite(LED_BUILTIN, HIGH); // LED OFF
 

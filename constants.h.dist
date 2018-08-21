@@ -8,3 +8,6 @@
 #define MQTT_PORT    1883
 #define MQTT_USER    NULL
 #define MQTT_PWD     NULL
+
+#define MULTI_WIFI_1    WIFI_SSID, WIFI_PASSWD
+#define MULTI_WIFI_2    "WIFI_SSID_2", "WIFI_PASSWD_2"
