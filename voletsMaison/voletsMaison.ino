@@ -21,6 +21,17 @@ const unsigned long MAX_TIMEOUT = 30 * 1000; // 30sec
 unsigned long command_timeout = MAX_TIMEOUT;
 bool stop = true;
 
+// --- Commande générale -------------------------------------------------------
+
+const int PIN_CMD_BUTTON_1 = D5;
+const int PIN_CMD_BUTTON_2 = D6;
+int pin_cmd_button_1_state;
+int pin_cmd_button_2_state;
+unsigned long debounce_timer;
+WiFiClient client;
+const char* host = "10.0.0.44";
+const int port = 80;
+const char* url_cmd = "/volets/?cmd=";
 
 //==============================================================================
 // SETUP
@@ -37,6 +48,9 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
+
+  pinMode(PIN_CMD_BUTTON_1, INPUT_PULLUP);
+  pinMode(PIN_CMD_BUTTON_2, INPUT_PULLUP);
 
   // Wifi
 
@@ -75,6 +89,10 @@ void setup() {
   server.begin();
   Serial.println("HTTP server started");
 
+  // Pins
+  pin_cmd_button_1_state = 1;
+  pin_cmd_button_2_state = 1;
+  debounce_timer = millis();
 }
 
 //==============================================================================
@@ -87,7 +105,53 @@ void loop(void) {
     commandStop();
   }
 
+  if (pinup(PIN_CMD_BUTTON_1, pin_cmd_button_1_state)) {
+    Serial.println("PIN_CMD_BUTTON_1 UP");
+  }
+  if (pinup(PIN_CMD_BUTTON_2, pin_cmd_button_2_state)) {
+    Serial.println("PIN_CMD_BUTTON_2 UP");
+  }
+  if (pindown(PIN_CMD_BUTTON_1, pin_cmd_button_1_state)) {
+    Serial.println("PIN_CMD_BUTTON_1 DOWN");
+    sendCommand("up");
+  }
+  if (pindown(PIN_CMD_BUTTON_2, pin_cmd_button_2_state)) {
+    Serial.println("PIN_CMD_BUTTON_2 DOWN");
+    sendCommand("down");
+  }
+
   delay(10);
+}
+
+bool pindown(int pin, int &state) {
+  if (state == 1
+    && digitalRead(pin) == 0
+    && millis() - debounce_timer > 1000) {
+    state = 0;
+    debounce_timer = millis();
+    return true;
+  }
+  return false;
+}
+bool pinup(int pin, int &state) {
+  if (state == 0
+    && digitalRead(pin) == 1
+    && millis() - debounce_timer > 1000) {
+    state = 1;
+    debounce_timer = millis();
+    return true;
+  }
+  return false;
+}
+
+void sendCommand(String cmd) {
+  if (!client.connect(host, port)) {
+    Serial.println("connection failed");
+    return;
+  }
+  client.print(String("GET ") + url_cmd + cmd + " HTTP/1.1\r\n" +
+             "Host: " + host + "\r\n" +
+             "Connection: close\r\n\r\n");
 }
 
 //==============================================================================
