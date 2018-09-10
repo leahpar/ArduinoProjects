@@ -1,3 +1,8 @@
+/*
+
+http://charleslabs.fr/fr/project-Contr%C3%B4le+de+prises+DiO+avec+Arduino
+
+*/
 #include <constants.h>
 
 // --- WIFI --------------------------------------------------------------------
@@ -14,20 +19,18 @@ ESP8266WebServer server(80);
 // --- Connexion serveur maison ------------------------------------------------
 
 WiFiClient client;
-const char* host = "10.0.0.44";
+const char* host = "192.168.1.25";
 const int port = 80;
 const char* url_cmd = "/Automa/AA_Groupe.php";
 unsigned long cmd_debounce = millis();
 
 // --- Radio -------------------------------------------------------------------
 
-#include <DiOremote.h>
-
 const int RX_PIN = D2;
 const int TX_PIN = D1;
 
 // --- HomeEasy protocol parameters ---
-#define DiOremote_PULSEIN_TIMEOUT 1000000
+#define DiOremote_PULSEIN_TIMEOUT 1500000
 #define DiOremote_FRAME_LENGTH 64
 // Homeasy start lock : 2725 us (+/- 175 us)
 #define DiOremote_START_TLOW 2550
@@ -43,6 +46,7 @@ unsigned long codeRx = 0; // Received radio signal
 int codeLen;
 byte currentBit, previousBit;
 
+#include <DiOremote.h>
 DiOremote dioRemote = DiOremote(TX_PIN);
 
 // --- codes radio -------------------------------------------------------------
@@ -82,6 +86,7 @@ void setup() {
 
   pinMode(RX_PIN, INPUT);
   pinMode(TX_PIN, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.println("------------------");
   Serial.println(
@@ -92,29 +97,15 @@ void setup() {
 
   // Wifi
 
-  Serial.println("Connecting ...");
+  Serial.println("Connecting...");
   WiFi.mode(WIFI_STA);
-  wifiMulti.addAP(MULTI_WIFI_1);
-  wifiMulti.addAP(MULTI_WIFI_2);
+  wifiMulti.addAP(MULTI_WIFI_1); // appart
+  wifiMulti.addAP(MULTI_WIFI_2); // maison
 
   Serial.print("mac address : ");
   Serial.println(WiFi.macAddress());
 
-  int i = 0;
-  // Wait for the Wi-Fi to connect:
-  // scan for Wi-Fi networks, and connect to the strongest network
-  while (wifiMulti.run() != WL_CONNECTED) {
-    Serial.print('.');
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(200);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-  }
-  Serial.println();
-  Serial.print("Connected to : ");
-  Serial.println(WiFi.SSID());
-  Serial.print("IP address : ");
-  Serial.println(WiFi.localIP());
+  connectWifi();
 
   // HTTP server
 
@@ -128,9 +119,36 @@ void setup() {
 }
 
 //==============================================================================
+// Check wifi connection
+//==============================================================================
+void connectWifi() {
+  bool wasConnected = true;
+  // Wait for the Wi-Fi to connect:
+  // scan for Wi-Fi networks, and connect to the strongest network
+  while (wifiMulti.run() != WL_CONNECTED) {
+    wasConnected = false;
+    Serial.print('.');
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+  }
+  if (!wasConnected) {
+    Serial.println();
+    Serial.print("Connected to : ");
+    Serial.println(WiFi.SSID());
+    Serial.print("IP address : ");
+    Serial.println(WiFi.localIP());
+  }
+}
+
+//==============================================================================
 // LOOP
 //==============================================================================
 void loop(void) {
+
+  // Check wifi connection
+  connectWifi();
 
   // WIFI ==> Radio
   server.handleClient();
@@ -138,15 +156,17 @@ void loop(void) {
   // Radio ==> WIFI
   handleRadio();
 
-  delay(10);
+  //delay(5);
 }
 
 //==============================================================================
 // READ RADIO
 //==============================================================================
 bool readRadio() {
+  //Serial.print("readRadio... ");
   // Wait for incoming bit
   unsigned long t = pulseIn(RX_PIN, LOW, DiOremote_PULSEIN_TIMEOUT);
+  //Serial.println(String(t) + "us");
 
   // Only decypher from 2nd Homeeasy lock
   if (t > DiOremote_START_TLOW && t < DiOremote_START_THIGH) {
@@ -211,6 +231,10 @@ void handleRadio() {
       // Send command
       sendCommand(cmd);
     }
+
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(100);
+    digitalWrite(LED_BUILTIN, HIGH);
   }
 }
 
@@ -247,9 +271,9 @@ unsigned long getCode(String id, String cmd) {
 // Get command from radio code
 //==============================================================================
 String getCmd(unsigned long code) {
-  // D1 OFF
-  if (code == CODES[12][0]) return "?cmd=up&etage=2";
   // D1 ON
+  if (code == CODES[12][0]) return "?cmd=up&etage=2";
+  // D1 OFF
   if (code == CODES[12][1]) return "?cmd=down&etage=2";
   // D2 ON
   if (code == CODES[13][0]) return "?cmd=up&etage=3";
@@ -257,6 +281,7 @@ String getCmd(unsigned long code) {
   if (code == CODES[13][1]) return "?cmd=down&etage=3";
   // none
   return "NONE";
+  // return "NONE " + String(code);
 }
 
 //==============================================================================
