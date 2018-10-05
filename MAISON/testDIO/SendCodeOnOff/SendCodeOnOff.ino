@@ -28,18 +28,15 @@ DiOremote myRemote = DiOremote(TX_PIN);
 void setup()
 {
   Serial.begin(74880);
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  delay(10000);
 }
 
 void loop() {
-
-  myRemote.send(CODES[1]);
-  delay(3000);
-  myRemote.send(CODES[2]);
-  delay(3000);
-  myRemote.send(CODES[3]);
-  delay(3000);
-  myRemote.send(CODES[4]);
-  delay(3000);
-  myRemote.send(CODES[5]);
-  delay(3000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  myRemote.send(CODES[i++%6]);
+  delay(500);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(3500);
 }

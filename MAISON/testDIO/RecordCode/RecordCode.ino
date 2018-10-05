@@ -48,10 +48,31 @@ void loop() {
   t = pulseIn(RX_PIN, LOW, DiOremote_PULSEIN_TIMEOUT);
   //Serial.println(String(t) + "us");
 
+  /*
+  if (t > DiOremote_START_TLOW && t < DiOremote_START_THIGH) {
+    Serial.print("X");
+  } else if (t > DiOremote_0_TLOW && t < DiOremote_0_THIGH) {
+    Serial.print(0);
+  } else if (t > DiOremote_1_TLOW && t < DiOremote_1_THIGH) {
+    Serial.print(1);
+  } else {
+    Serial.print(".");
+  }
+
+
+  if (i % 100 == 0) {
+    Serial.println("");
+    Serial.print(String(millis()) + " ");
+    i = 0;
+  }
+  i++;
+  return;
+  */
+
   // Only decypher from 2nd Homeeasy lock
   if (t > DiOremote_START_TLOW && t < DiOremote_START_THIGH) {
-Serial.println("XXXXXXXXXXXXXXXXXXXXXXXXXXXX");
-code = 0;
+  Serial.println("XXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+  code = 0;
 
     for (i = 0 ; i < DiOremote_FRAME_LENGTH ; i++) {
       // Read each bit (64 times)
@@ -67,8 +88,8 @@ code = 0;
       } else {
         Serial.print(".");
         i--;
-        //continue;
-        break;
+        continue;
+        //break;
       }
       // If bit count is even, check Manchester validity & store in code
       if (i % 2) {
@@ -83,7 +104,7 @@ code = 0;
       }
       previousBit = currentBit;
     }
-  
+
   // Send the code via serial
   //if (i == DiOremote_FRAME_LENGTH) {
     Serial.println("");
