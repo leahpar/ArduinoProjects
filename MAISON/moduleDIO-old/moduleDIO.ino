@@ -1,7 +1,8 @@
 /*
-http://charleslabs.fr/fr/project-Contr%C3%B4le+de+prises+DiO+avec+Arduino
-*/
 
+http://charleslabs.fr/fr/project-Contr%C3%B4le+de+prises+DiO+avec+Arduino
+
+*/
 #include <constants.h>
 
 // --- WIFI --------------------------------------------------------------------
@@ -15,20 +16,35 @@ ESP8266WiFiMulti wifiMulti;
 #include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
 
-// --- OTA ---------------------------------------------------------------------
+// --- Connexion serveur maison ------------------------------------------------
 
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-
-const char* ota_passwd = "admin";
-const char* ota_host   = "module-dio";
-
+WiFiClient client;
+const char* host = "192.168.1.25";
+const int port = 80;
+const char* url_cmd = "/Automa/AA_Groupe.php";
+unsigned long cmd_debounce = millis();
 
 // --- Radio -------------------------------------------------------------------
 
-//const int RX_PIN = D1;
-const int TX_PIN = D7;
+const int RX_PIN = D2;
+const int TX_PIN = D1;
+
+// --- HomeEasy protocol parameters ---
+#define DiOremote_PULSEIN_TIMEOUT 1500000
+#define DiOremote_FRAME_LENGTH 64
+// Homeasy start lock : 2725 us (+/- 175 us)
+#define DiOremote_START_TLOW 2550
+#define DiOremote_START_THIGH 2900
+// Homeeasy 0 : 310 us
+#define DiOremote_0_TLOW 250
+#define DiOremote_0_THIGH 450
+//Homeeasy 1 : 1300 us
+#define DiOremote_1_TLOW 1250
+#define DiOremote_1_THIGH 1500
+
+unsigned long codeRx = 0; // Received radio signal
+int codeLen;
+byte currentBit, previousBit;
 
 #include <DiOremote.h>
 DiOremote dioRemote = DiOremote(TX_PIN);
@@ -68,7 +84,7 @@ void setup() {
   Serial.begin(74880);
   while (!Serial);
 
-  //pinMode(RX_PIN, INPUT);
+  pinMode(RX_PIN, INPUT);
   pinMode(TX_PIN, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -83,19 +99,13 @@ void setup() {
 
   Serial.println("Connecting...");
   WiFi.mode(WIFI_STA);
-  wifiMulti.addAP(MULTI_WIFI_1);
-  wifiMulti.addAP(MULTI_WIFI_2);
+  wifiMulti.addAP(MULTI_WIFI_1); // appart
+  wifiMulti.addAP(MULTI_WIFI_2); // maison
 
   Serial.print("mac address : ");
   Serial.println(WiFi.macAddress());
 
   connectWifi();
-  Serial.println("WIFI OK");
-
-  // OTA
-  
-  ota_setup();
-  Serial.println("OTA OK");
 
   // HTTP server
 
@@ -137,16 +147,108 @@ void connectWifi() {
 //==============================================================================
 void loop(void) {
 
-  // Check wifi
+  // Check wifi connection
   connectWifi();
 
   // WIFI ==> Radio
   server.handleClient();
 
-  // OTA
-  ArduinoOTA.handle();
+  // Radio ==> WIFI
+  handleRadio();
 
-  delay(10);
+  //delay(5);
+}
+
+//==============================================================================
+// READ RADIO
+//==============================================================================
+bool readRadio() {
+  //Serial.print("readRadio... ");
+  // Wait for incoming bit
+  unsigned long t = pulseIn(RX_PIN, LOW, DiOremote_PULSEIN_TIMEOUT);
+  //Serial.println(String(t) + "us");
+
+  // Only decypher from 2nd Homeeasy lock
+  if (t > DiOremote_START_TLOW && t < DiOremote_START_THIGH) {
+
+    for (codeLen = 0 ; codeLen < DiOremote_FRAME_LENGTH ; codeLen++) {
+      // Read each bit (64 times)
+      t = pulseIn(RX_PIN, LOW, DiOremote_PULSEIN_TIMEOUT);
+
+      // Identify current bit based on the pulse length
+      if (t > DiOremote_0_TLOW && t < DiOremote_0_THIGH)
+        currentBit = 0;
+      else if (t > DiOremote_1_TLOW && t < DiOremote_1_THIGH)
+        currentBit = 1;
+      else
+        break;
+
+      // If bit count is even, check Manchester validity & store in code
+      if (codeLen % 2) {
+
+        // Code validity verification (Manchester complience)
+        if (!(previousBit ^ currentBit))
+          break;
+
+        // Store new bit
+        codeRx <<= 1;
+        codeRx |= previousBit;
+      }
+      previousBit = currentBit;
+    }
+  }
+
+  if (codeLen == DiOremote_FRAME_LENGTH) {
+    return true;
+  }
+
+  return false;
+}
+
+//==============================================================================
+// HANDLE RADIO
+// Check for radio sigal
+//==============================================================================
+void handleRadio() {
+
+  // If signal is available
+  if (readRadio()) {
+
+    // Get cmd from signal
+    String cmd = getCmd(codeRx);
+
+    // Reset signal
+    codeLen = 0;
+
+    // Debounce 1sec
+    if (millis() - cmd_debounce < 1000) return;
+
+    cmd_debounce = millis();
+
+    Serial.println("Received (radio): " + String(codeRx) + " => " + cmd);
+
+    if (cmd != "NONE") {
+      // Send command
+      sendCommand(cmd);
+    }
+
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(100);
+    digitalWrite(LED_BUILTIN, HIGH);
+  }
+}
+
+//==============================================================================
+// Send http command
+//==============================================================================
+void sendCommand(String cmd) {
+  if (!client.connect(host, port)) {
+    Serial.println("connection failed");
+    return;
+  }
+  client.print(String("GET ") + url_cmd + cmd + " HTTP/1.1\r\n" +
+             "Host: " + host + "\r\n" +
+             "Connection: close\r\n\r\n");
 }
 
 //==============================================================================
@@ -163,6 +265,23 @@ unsigned long getCode(String id, String cmd) {
                 +  (int)(id.charAt(1)) - (int)'0' - 1;
     return CODES[dio][c];
   }
+}
+
+//==============================================================================
+// Get command from radio code
+//==============================================================================
+String getCmd(unsigned long code) {
+  // D1 ON
+  if (code == CODES[12][0]) return "?cmd=up&etage=2";
+  // D1 OFF
+  if (code == CODES[12][1]) return "?cmd=down&etage=2";
+  // D2 ON
+  if (code == CODES[13][0]) return "?cmd=up&etage=3";
+  // D2 OFF
+  if (code == CODES[13][1]) return "?cmd=down&etage=3";
+  // none
+  return "NONE";
+  // return "NONE " + String(code);
 }
 
 //==============================================================================
@@ -224,59 +343,3 @@ void handleHelp() {
 
   server.send(400, "text/plain", help);
 }
-
-//==============================================================================
-// UPDATE OTA
-//==============================================================================
-
-const char* _ota_passwd = OTA_PASSWD;
-
-void ota_setup() {
-  // Port defaults to 8266
-  // ArduinoOTA.setPort(8266);
-
-  // Hostname defaults to esp8266-[ChipID]
-  ArduinoOTA.setHostname(ota_host);
-
-  // No authentication by default
-  ArduinoOTA.setPassword(ota_passwd);
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_SPIFFS
-      type = "filesystem";
-    }
-
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating" + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    //digitalWrite(LED_BUILTIN, progress % 10 < 5 ? HIGH : LOW);
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-  });
-  ArduinoOTA.begin();
-  Serial.println("Ready");
-}
-
