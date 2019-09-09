@@ -7,7 +7,7 @@
 
 #include <ESP8266WiFi.h>
 const char* wifi_ssid = "TATOOINE";
-const char* wifi_pass = "";
+const char* wifi_pass = "yapademotdepasse";
 
 // --- Serveur HTTP ----------------------------------------------------------
 

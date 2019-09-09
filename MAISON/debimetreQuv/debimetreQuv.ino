@@ -1,7 +1,3 @@
-/*
-http://charleslabs.fr/fr/project-Contr%C3%B4le+de+prises+DiO+avec+Arduino
-*/
-
 #include <constants.h>
 
 // --- WIFI --------------------------------------------------------------------
@@ -10,11 +6,6 @@ http://charleslabs.fr/fr/project-Contr%C3%B4le+de+prises+DiO+avec+Arduino
 #include <ESP8266WiFiMulti.h> // For multiple wifi networks
 ESP8266WiFiMulti wifiMulti;
 
-// --- Serveur HTTP ------------------------------------------------------------
-
-#include <ESP8266WebServer.h>
-ESP8266WebServer server(80);
-
 // --- OTA ---------------------------------------------------------------------
 
 #include <ESP8266mDNS.h>
@@ -22,54 +13,28 @@ ESP8266WebServer server(80);
 #include <ArduinoOTA.h>
 
 const char* ota_passwd = "admin";
-const char* ota_host   = "module-dio";
+const char* ota_host   = "debimetre-quv";
 
+// --- Débimètre ---------------------------------------------------------------
 
-// --- Radio -------------------------------------------------------------------
-
-//const int RX_PIN = D1;
-const int TX_PIN = D7;
-
-#include <DiOremote.h>
-DiOremote dioRemote = DiOremote(TX_PIN);
-
-// --- codes radio -------------------------------------------------------------
-
-const unsigned long CODES[][2]  = {
-  // Groupe A
-  { 1404155792, 1404155776 },
-  { 1404155793, 1404155777 },
-  { 1404155794, 1404155778 },
-  { 1404155795, 1404155779 },
-  // Groupe B
-  { 1404155796, 1404155780 },
-  { 1404155797, 1404155781 },
-  { 1404155798, 1404155782 },
-  { 1404155799, 1404155783 },
-  // Groupe C
-  { 1404155800, 1404155784 },
-  { 1404155801, 1404155785 },
-  { 1404155802, 1404155786 },
-  { 1404155803, 1404155787 },
-  // Groupe D
-  { 1404155804, 1404155788 }, // Volets RDC
-  { 1404155805, 1404155789 }, // Volets étage
-  { 1404155806, 1404155790 },
-  { 1404155807, 1404155791 },
-  // Groupe G
-  { 1404155824, 1404155808 }
-};
-
+const int PIN_INTERRUPT = D7;
+volatile unsigned long pulseCount = 0;
+volatile unsigned long pulseCountTot = 0;
+uint32_t curTime;
+unsigned long startTime=0;    // début du nouveau comptage
+unsigned long pusleInterval = 1000; // 10 sec
+unsigned long PPL = 500; // Pulses par Litre
+float volumeTotal = 0.0;
 
 //==============================================================================
 // SETUP
 //==============================================================================
+
 void setup() {
   Serial.begin(74880);
   while (!Serial);
 
-  //pinMode(RX_PIN, INPUT);
-  pinMode(TX_PIN, OUTPUT);
+  pinMode(PIN_INTERRUPT, INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.println("------------------");
@@ -94,15 +59,13 @@ void setup() {
 
   // OTA
   
-  ota_setup();
+  //ota_setup();
   Serial.println("OTA OK");
 
-  // HTTP server
+  // Debimètre
 
-  server.on("/", handleRoot);
-  server.onNotFound(handleHelp);
-  server.begin();
-  Serial.println("HTTP server started");
+  attachInterrupt(PIN_INTERRUPT, pulseInterrupt, FALLING);
+
 
   Serial.println("Setup done");
   Serial.println("------------------");
@@ -137,92 +100,41 @@ void connectWifi() {
 //==============================================================================
 void loop(void) {
 
-  // Check wifi
-  connectWifi();
+  curTime = millis();
+  if (curTime - startTime > pusleInterval) {
+    digitalWrite(LED_BUILTIN, LOW);
+    // PPL impulsions pour 1 litre
+    float l = 1.0 * pulseCount / PPL; // <= L (depuis dernière mesure)
+    volumeTotal += l;
+    float q = 1000.0 * l / (curTime - startTime); // <= L/s
+    pulseCount = 0;
+    startTime = curTime;
+    Serial.println(String("")
+      //+ String(volumeTotal) + " L ; " 
+      + String(l) + " L ; " 
+      + String(q) + " L/s" 
+      //+ " ; Pulses : " + String(pulseCount) + " / " + String(pulseCountTot)
+    );
+    digitalWrite(LED_BUILTIN, HIGH);
+  }
 
-  // WIFI ==> Radio
-  server.handleClient();
+  // Check wifi
+  //connectWifi();
+
+  //server.handleClient();
 
   // OTA
-  ArduinoOTA.handle();
+  //ArduinoOTA.handle();
 
   delay(10);
 }
 
-//==============================================================================
-// Get radio code from command
-//==============================================================================
-unsigned long getCode(String id, String cmd) {
-  int c = cmd == "on" ? 0 : 1;
 
-  if (id == "G") {
-    return CODES[16][c];
-  }
-  else {
-    int dio = 4 * ((int)(id.charAt(0)) - (int)'A')
-                +  (int)(id.charAt(1)) - (int)'0' - 1;
-    return CODES[dio][c];
-  }
-}
 
-//==============================================================================
-// HANDLE ROOT
-// Gère les requêtes http
-//==============================================================================
-void handleRoot() {
-  int ret;
-
-  // Paramètres obligatoires
-  if (!server.hasArg("cmd") || !server.hasArg("dio")) {
-    handleHelp();
-    return;
-  }
-
-  digitalWrite(LED_BUILTIN, LOW); // LED ON
-
-  unsigned long c = getCode(server.arg("dio"), server.arg("cmd"));
-  Serial.println(
-    "Received (wifi): "
-     + server.arg("dio") + " "
-     + server.arg("cmd") + " "
-     + " => "
-     + String(c)
-   );
-  if (c > 0) {
-    dioRemote.send(c);
-    ret = 200;
-  }
-  else {
-    ret = 404;
-  }
-
-  server.send(ret, "text/plain", "OK");
-
-  digitalWrite(LED_BUILTIN, HIGH); // LED OFF
-
-}
-
-//==============================================================================
-// HANDLE HELP
-// Affiche l'usage
-//==============================================================================
-void handleHelp() {
-  String help = "";
-  help += "Version: " + String(__DATE__) + " - " + String(__TIME__);
-  help += "\n";
-  help += "Usage:\n";
-  help += "http://" + WiFi.localIP().toString() + "/?cmd=<on|off>&dio=<([A-D][1-4])|G>\n";
-  help += " [dio] : ID dio (A1, A2...)\n";
-  help += " [cmd] : commande (on, off)\n";
-  help += "\n";
-  help += "Wifi:\n";
-  help += " SSID: "+ WiFi.SSID() +"\n";
-  help += " MAC:  "+ WiFi.macAddress() +"\n";
-  help += " IP:   "+ WiFi.localIP().toString() +"\n";
-  help += " RSSI: "+ String(WiFi.RSSI()) + " dB\n";
-  help += "\n";
-
-  server.send(400, "text/plain", help);
+void pulseInterrupt()
+{
+  pulseCount++;
+  pulseCountTot++;
 }
 
 //==============================================================================
