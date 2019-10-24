@@ -1,6 +1,15 @@
+/**
+ * FauxmoESP
+ * https://bitbucket.org/xoseperez/fauxmoesp
+ * 
+ * 
+ * Voir aussi : ESPAlexa
+ * https://github.com/Aircoookie/Espalexa
+ * (non utilisé ici, mais piste pour plus tard)
+ */
+
 #include <Arduino.h>
 #include <constants.h>
-
 
 // --- WIFI ---------------------------------------------
 
@@ -12,9 +21,9 @@ const char* wifi_pass = WIFI_PASSWD;
 
 #include "fauxmoESP.h"
 fauxmoESP fauxmo;
-const char* alexa_device_01 = "leds du bureau";
-const char* alexa_device_02 = "yoda";
-const char* alexa_device_03 = "K2000";
+const char* alexa_device_leds = "leds du bureau";
+const char* alexa_device_yoda = "yoda";
+//const char* alexa_device_03 = "K2000";
 
 // --- Wake on lan -------------------------------------
 
@@ -28,6 +37,13 @@ const IPAddress wol_broadcast(10,0,0,255);
 byte wol_mac[] = { 0x4C, 0xCC, 0x6A, 0x4C, 0x48, 0x6A };
 int wol_cpt = 0;
 bool wol_up = false;
+
+// --- Sleep on lan ------------------------------------
+
+WiFiClient client;
+const int telnetPort = 29800;
+const byte yoda_ip[] = { 10, 0, 0, 21 };
+bool wol_down = false;
 
 // --- Leds --------------------------------------------
 
@@ -120,13 +136,25 @@ void loop() {
     WakeOnLan::sendWOL(wol_broadcast, UDP, wol_mac, sizeof wol_mac);
   }
 
+  // Shut down Ypda
+  if (wol_down) {
+    wol_down = false;
+    if (client.connect(yoda_ip, telnetPort)) {
+      client.print(String("stop\r\n"));
+      client.stop();
+    }
+    else {
+       Serial.println("connection failed");      
+    } 
+  }
+  
   // Update yoda status
   static unsigned long last_ping = millis();
   if (millis() - last_ping > 15000) {
     last_ping = millis();
     wol_up = Ping.ping(wol_ip, 2);
     Serial.println("[PING] Update " + String(wol_up));
-    fauxmo.setState(alexa_device_02, wol_up, 255);
+    fauxmo.setState(alexa_device_yoda, wol_up, 255);
   }
   
 
@@ -191,9 +219,9 @@ void fauxmoSetup() {
     // "Alexa, set yellow lamp to fifty" (50 means 50% of brightness, note, this example does not use this functionality)
 
     // Add virtual devices
-    fauxmo.addDevice(alexa_device_01);
-    fauxmo.addDevice(alexa_device_02);
-    fauxmo.addDevice(alexa_device_03);
+    fauxmo.addDevice(alexa_device_leds);
+    fauxmo.addDevice(alexa_device_yoda);
+    //fauxmo.addDevice(alexa_device_03);
 
     fauxmo.onSetState([](unsigned char device_id, const char * device_name, bool state, unsigned char value) {
         
@@ -209,7 +237,7 @@ void fauxmoSetup() {
         // Checking for device_id is simpler if you are certain about the order they are loaded and it does not change.
         // Otherwise comparing the device_name is safer.
 
-        if (strcmp(device_name, alexa_device_01) == 0) {
+        if (strcmp(device_name, alexa_device_leds) == 0) {
           if (!state) {
             leds_value = 0;
           }
@@ -218,14 +246,19 @@ void fauxmoSetup() {
             //leds_value = value;
           }
         }
-        else if (strcmp(device_name, alexa_device_02) == 0) {
+        else if (strcmp(device_name, alexa_device_yoda) == 0) {
           if (state == true) {
             wol_cpt = 5;
           }
+          else {
+            wol_down = true;
+          }
         }
-        else if (strcmp(device_name, alexa_device_02) == 0) {
+        /*
+        else if (strcmp(device_name, alexa_device_03) == 0) {
           k2000 = state;
         }
+        */
 
         digitalWrite(LED_BUILTIN, HIGH);
     });
@@ -301,4 +334,3 @@ void updateLeds() {
   }
 
 }
-
