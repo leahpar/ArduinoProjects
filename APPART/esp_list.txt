@@ -1,0 +1,8 @@
+Capteur température chambre
+C2
+a0:20:a6:10:5a:87
+10.0.0.102
+sensor/temperature/chambre
+sensor/humidity/chambre
+sensor/battery/chambre
+
