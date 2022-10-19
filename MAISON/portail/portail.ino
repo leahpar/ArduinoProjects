@@ -7,8 +7,8 @@
 // 2022-10-15 : Version 1.0 RB Reprise du module volets
 //==============================================================================
 
-#define WIFI_SSID    "TATOOINE"
-#define WIFI_PASSWD  "yapademotdepasse"
+#define WIFI_SSID    "YOUR _SSID"
+#define WIFI_PASSWD  "your_wifi_password"
 #define MULTI_WIFI_1    WIFI_SSID, WIFI_PASSWD
 //#include <constants.h>
 
