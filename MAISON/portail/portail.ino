@@ -32,14 +32,14 @@ volatile bool isClosed = false;    // Etat du portail
 volatile int etat = 0;             // -1 = ouverture ; 0 = arrêté ; +1 = fermeture
 volatile unsigned long last_sda = 0;
 
-unsigned long time_to_stop = -1;
+long time_to_stop = -1;
 
 // --- Serveur central pour commande de groupe ---------------------------------
 // TODO: utiliser des constantes
 WiFiClient client;
-const char* host = "192.168.1.25";                // Adresse du serveur central
-const int port = 80;                              // Port du serveur
-const char* url_cmd = "/Automa/AA_groupe.php/?cmd=";   // Application pour le groupe de volets
+//const char* host = "192.168.1.25";                // Adresse du serveur central
+//const int port = 80;                              // Port du serveur
+//const char* url_cmd = "/Automa/AA_groupe.php/?cmd=";   // Application pour le groupe de volets
 
 
 //==============================================================================
@@ -51,8 +51,8 @@ void ICACHE_RAM_ATTR pulseInterrupt() {
   }
   else if (etat == 0 && isClosed) {
     etat = -1; // en cours d'ouverture
-    isClosed = true;
   }
+  isClosed = false;
   last_sda = millis();
 }
 
@@ -75,7 +75,7 @@ void setup() {
 
   // --- Interrupts ------------------------------------------------------------
   pinMode(PIN_IN_SDA, INPUT_PULLUP);
-  attachInterrupt(PIN_IN_SDA, pulseInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(PIN_IN_SDA), pulseInterrupt, FALLING);
   last_sda = millis();
 
   // --- Initialisation wifi ---------------------------------------------------
@@ -102,6 +102,7 @@ void setup() {
   server.onNotFound(handleHelp);
   server.begin();
   Serial.println("HTTP server started");
+
 }
 
 //==============================================================================
@@ -115,16 +116,27 @@ void loop(void) {
   // Gère les requêtes http en attente
   server.handleClient();
 
-  // Pas de nouvelle depuis 5sec, le portail est arrêté
-  if (millis() - last_sda > 5000) {
-    if (digitalRead(PIN_IN_SDA) == LOW) {
-      etat = 0;
+  // Pas de mouvement depuis Xsec, le portail est arrêté
+  noInterrupts();
+  if (millis() - last_sda > 3000) {
+    if (digitalRead(PIN_IN_SDA) == HIGH) {
       isClosed = true;
     }
     else {
       isClosed = false;
     }
+    etat = 0;
+    String xx = String(digitalRead(PIN_IN_SDA)); 
+    xx += " ";
+    xx += String(etat);
+    xx += " ";
+    xx += String(isClosed);
+    xx += " ";
+    xx += String(last_sda/1000);
+    Serial.println(xx);
+    last_sda = millis();
   }
+  interrupts();
 
   if (isClosed) {
     digitalWrite(LED_BUILTIN, HIGH); // LED OFF
@@ -132,9 +144,8 @@ void loop(void) {
       digitalWrite(LED_BUILTIN, LOW); // LED ON
   }
 
-
   // Il est temps de s'arrêter
-  if (time_to_stop > 0 && millis() - time_to_stop <= 0) {
+  if (time_to_stop > 0 && millis() > time_to_stop) {
     commandStop();
     time_to_stop = -1;
   }
