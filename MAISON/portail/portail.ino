@@ -7,10 +7,12 @@
 // 2022-10-15 : Version 1.0 RB Reprise du module volets
 //==============================================================================
 
-#define WIFI_SSID    "YOUR _SSID"
-#define WIFI_PASSWD  "your_wifi_password"
-#define MULTI_WIFI_1    WIFI_SSID, WIFI_PASSWD
 //#include <constants.h>
+#define WIFI_SSID    "SSID"
+#define WIFI_PASSWD  "PASSSWD"
+
+#define MULTI_WIFI_1    WIFI_SSID, WIFI_PASSWD
+
 
 // --- WIFI --------------------------------------------------------------------
 #include <ESP8266WiFi.h>
@@ -32,7 +34,7 @@ volatile bool isClosed = false;    // Etat du portail
 volatile int etat = 0;             // -1 = ouverture ; 0 = arrêté ; +1 = fermeture
 volatile unsigned long last_sda = 0;
 
-long time_to_stop = -1;
+unsigned long time_to_stop = -1;
 
 // --- Serveur central pour commande de groupe ---------------------------------
 // TODO: utiliser des constantes
@@ -40,7 +42,6 @@ WiFiClient client;
 //const char* host = "192.168.1.25";                // Adresse du serveur central
 //const int port = 80;                              // Port du serveur
 //const char* url_cmd = "/Automa/AA_groupe.php/?cmd=";   // Application pour le groupe de volets
-
 
 //==============================================================================
 // PULSE INTERRUPT
@@ -60,7 +61,7 @@ void ICACHE_RAM_ATTR pulseInterrupt() {
 // SETUP
 //==============================================================================
 void setup() {
-  Serial.begin(19200);
+  Serial.begin(57600);
   while (!Serial);
 
   // --- Initialisation des pins -----------------------------------------------
@@ -102,7 +103,6 @@ void setup() {
   server.onNotFound(handleHelp);
   server.begin();
   Serial.println("HTTP server started");
-
 }
 
 //==============================================================================
@@ -116,8 +116,8 @@ void loop(void) {
   // Gère les requêtes http en attente
   server.handleClient();
 
-  // Pas de mouvement depuis Xsec, le portail est arrêté
   noInterrupts();
+  // Pas de mouvement depuis 3sec, le portail est arrêté
   if (millis() - last_sda > 3000) {
     if (digitalRead(PIN_IN_SDA) == HIGH) {
       isClosed = true;
@@ -126,15 +126,6 @@ void loop(void) {
       isClosed = false;
     }
     etat = 0;
-    String xx = String(digitalRead(PIN_IN_SDA)); 
-    xx += " ";
-    xx += String(etat);
-    xx += " ";
-    xx += String(isClosed);
-    xx += " ";
-    xx += String(last_sda/1000);
-    Serial.println(xx);
-    last_sda = millis();
   }
   interrupts();
 
@@ -143,6 +134,7 @@ void loop(void) {
   } else {
       digitalWrite(LED_BUILTIN, LOW); // LED ON
   }
+
 
   // Il est temps de s'arrêter
   if (time_to_stop > 0 && millis() > time_to_stop) {
@@ -199,6 +191,11 @@ void handleHelp() {
   help += " [d] : direction (obligatoire) => open, close, stop\n";
   help += " [t] : temps (facultatif) => en ms\n";
   help += "\n";
+  help += "http://" + WiFi.localIP().toString() + "/?d=status\n";
+  help += "Statut du portail :\n";
+  help += "direction : -1 = ouverture ; 0 = arrêté ; +1 = fermeture\n";
+  help += "closed    : 1 ; 0";
+  help += "\n";
 
   if (isClosed) {
     help += "Portail: FERME\n";
@@ -238,6 +235,9 @@ void handleRoot() {
     t = atol(server.arg("t").c_str());
   }
 
+  String httpreponse = "OK - " + server.arg("d") + " " + t;
+  int httpstatus = 200;
+
   // --- On lance la commande du portail
   if (server.arg("d") == "open") {
     commandOpen(t);
@@ -245,42 +245,25 @@ void handleRoot() {
   else if (server.arg("d") == "close") {
     commandClose(t);
   }
-  else {
+  else if (server.arg("d") == "stop") {
     commandStop();
   }
+  else if (server.arg("d") == "status") {
+    httpreponse = "direction=";
+    httpreponse += String(etat);
+    httpreponse += ";";
+    httpreponse += "closed=";
+    httpreponse += isClosed ? "1" : "0";
+  }
+  else {
+    httpreponse = "";
+    httpstatus = 400;
+  }
 
-  // --- et on répond:   http 200 - OK
-  server.send(
-    200,
-    "text/plain",
-    "OK " + server.arg("d") + " " + t
-  );
+  // --- et on répond
+  server.send(httpstatus, "text/plain", httpreponse);
 
   digitalWrite(LED_BUILTIN, HIGH); // LED OFF
-}
-
-//==============================================================================
-// COMMAND STOP
-// Commande d'arrêt du volet
-//==============================================================================
-void commandStop() {
-  Serial.println("STOP");
-  switch (etat) {
-    case -1: // en cours d'ouverture
-      digitalWrite(PIN_CMD_CLOSE, HIGH);
-      delay(DELAY_CMD);
-      digitalWrite(PIN_CMD_CLOSE, LOW);
-      //etat = 0;
-      break;
-    case 1: // en cours de fermeture
-      digitalWrite(PIN_CMD_OPEN, HIGH);
-      delay(DELAY_CMD);
-      digitalWrite(PIN_CMD_OPEN, LOW);
-      //etat = 0;
-      break;
-    case 0: // Déjà arrêté
-      break;
-  }
 }
 
 //==============================================================================
@@ -289,7 +272,6 @@ void commandStop() {
 //==============================================================================
 void commandOpen(unsigned long t) {
   Serial.println("OPEN (" + String(t) + ")");
-  etat = -1; // en cours d'ouverture
   digitalWrite(PIN_CMD_OPEN, HIGH);
   delay(DELAY_CMD);
   digitalWrite(PIN_CMD_OPEN, LOW);
@@ -305,7 +287,6 @@ void commandOpen(unsigned long t) {
 //==============================================================================
 void commandClose(unsigned long t) {
   Serial.println("CLOSE (" + String(t) + ")");
-  etat = 1; // en cours de fermeture
   digitalWrite(PIN_CMD_CLOSE, HIGH);
   delay(DELAY_CMD);
   digitalWrite(PIN_CMD_CLOSE, LOW);
@@ -314,4 +295,23 @@ void commandClose(unsigned long t) {
     time_to_stop = millis() + t;
   }
 }
+
+//==============================================================================
+// COMMAND STOP
+// Commande d'arrêt du volet
+//==============================================================================
+void commandStop() {
+  Serial.println("STOP");
+  switch (etat) {
+    case 1: // en cours de fermeture
+      commandClose(0);
+      break;
+    case -1: // en cours d'ouverture
+      commandOpen(0);
+      break;
+    case 0: // Déjà arrêté
+      break;
+  }
+}
+
 
